@@ -128,12 +128,13 @@
       display: flex;
       flex-direction: column;
       overflow-y: auto;
+      pointer-events: none;
       padding-top: env(safe-area-inset-top);
       padding-bottom: env(safe-area-inset-bottom);
       padding-right: env(safe-area-inset-right);
     }
 
-    .panel.open { transform: translateX(0); }
+    .panel.open { transform: translateX(0); pointer-events: auto; }
 
     .panel-header {
       display: flex;
@@ -197,7 +198,7 @@
     .field input:focus { border-color: #444; }
     .field input::placeholder { color: #333; }
 
-    .save-btn {
+    .add-btn {
       margin-top: 8px;
       padding: 14px;
       background: #fff;
@@ -213,8 +214,8 @@
       -webkit-tap-highlight-color: transparent;
     }
 
-    .save-btn:hover { opacity: 0.85; }
-    .save-btn:active { opacity: 0.7; }
+    .add-btn:hover { opacity: 0.85; }
+    .add-btn:active { opacity: 0.7; }
 
     .saved-msg {
       text-align: center;
@@ -222,6 +223,85 @@
       color: #4caf50;
       letter-spacing: 1px;
       height: 16px;
+    }
+
+    /* Station List */
+    .station-list-section {
+      margin-top: 8px;
+      border-top: 1px solid #222;
+      padding-top: 20px;
+    }
+
+    .station-list-section h3 {
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: #555;
+      margin-bottom: 12px;
+    }
+
+    .station-list {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .station-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .station-item:hover { background: #1a1a1a; }
+    .station-item:active { background: #1a1a1a; }
+
+    .station-item.active {
+      background: #1a1a1a;
+    }
+
+    .station-item-name {
+      font-size: 14px;
+      color: #aaa;
+      letter-spacing: 0.5px;
+    }
+
+    .station-item.active .station-item-name {
+      color: #fff;
+    }
+
+    .station-item-actions {
+      display: flex;
+      gap: 4px;
+    }
+
+    .station-delete {
+      width: 32px;
+      height: 32px;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      transition: background 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .station-delete:hover { background: #2a1a1a; }
+    .station-delete svg { width: 14px; height: 14px; fill: #555; }
+    .station-delete:hover svg { fill: #f44336; }
+
+    .empty-msg {
+      font-size: 13px;
+      color: #333;
+      text-align: center;
+      padding: 12px;
     }
   </style>
 </head>
@@ -267,8 +347,13 @@
         <label>Stream URL</label>
         <input type="url" id="inputUrl" placeholder="https://stream.example.com/radio" />
       </div>
-      <button class="save-btn" id="saveBtn">Save</button>
+      <button class="add-btn" id="addBtn">Add Station</button>
       <div class="saved-msg" id="savedMsg"></div>
+
+      <div class="station-list-section">
+        <h3>My Stations</h3>
+        <div class="station-list" id="stationList"></div>
+      </div>
     </div>
   </div>
 
@@ -288,18 +373,21 @@
     const panel = document.getElementById('panel');
     const inputName = document.getElementById('inputName');
     const inputUrl = document.getElementById('inputUrl');
-    const saveBtn = document.getElementById('saveBtn');
+    const addBtn = document.getElementById('addBtn');
     const savedMsg = document.getElementById('savedMsg');
+    const stationListEl = document.getElementById('stationList');
 
-    let channel = loadChannel();
+    let stations = loadStations();
+    let activeIndex = loadActiveIndex();
     let playing = false;
 
-    applyChannel();
+    applyActive();
+    renderStationList();
 
     // --- Settings panel ---
     function openPanel() {
-      inputName.value = channel.name;
-      inputUrl.value = channel.url;
+      inputName.value = '';
+      inputUrl.value = '';
       savedMsg.textContent = '';
       panel.classList.add('open');
       overlay.classList.add('open');
@@ -314,55 +402,167 @@
     closeBtn.addEventListener('click', closePanel);
     overlay.addEventListener('click', closePanel);
 
-    saveBtn.addEventListener('click', () => {
+    addBtn.addEventListener('click', () => {
       const name = inputName.value.trim();
       const url = inputUrl.value.trim();
 
       if (!name || !url) {
-        savedMsg.textContent = 'Both fields are required';
-        savedMsg.style.color = '#f44336';
-        setTimeout(() => { savedMsg.textContent = ''; savedMsg.style.color = ''; }, 2000);
+        showMsg('Both fields are required', '#f44336');
         return;
       }
 
-      channel = { name, url };
-      localStorage.setItem('miniradio_channel', JSON.stringify(channel));
-      applyChannel();
+      stations.push({ name, url });
+      saveStations();
 
-      savedMsg.textContent = 'Saved';
-      savedMsg.style.color = '';
+      // Auto-select if it's the first station
+      if (stations.length === 1) {
+        activeIndex = 0;
+        saveActiveIndex();
+        applyActive();
+      }
+
+      inputName.value = '';
+      inputUrl.value = '';
+      showMsg('Station added', '#4caf50');
+      renderStationList();
+    });
+
+    function showMsg(text, color) {
+      savedMsg.textContent = text;
+      savedMsg.style.color = color;
       setTimeout(() => { savedMsg.textContent = ''; }, 2000);
+    }
 
+    function selectStation(index) {
       if (playing) {
         radio.pause();
         radio.src = '';
         setUI(false);
       }
-
+      activeIndex = index;
+      saveActiveIndex();
+      applyActive();
+      renderStationList();
       closePanel();
-    });
+    }
 
-    function loadChannel() {
+    function deleteStation(index) {
+      stations.splice(index, 1);
+      saveStations();
+
+      if (stations.length === 0) {
+        activeIndex = -1;
+        if (playing) {
+          radio.pause();
+          radio.src = '';
+          setUI(false);
+        }
+      } else if (index === activeIndex) {
+        activeIndex = 0;
+        if (playing) {
+          radio.pause();
+          radio.src = '';
+          setUI(false);
+        }
+      } else if (index < activeIndex) {
+        activeIndex--;
+      }
+
+      saveActiveIndex();
+      applyActive();
+      renderStationList();
+    }
+
+    function renderStationList() {
+      if (stations.length === 0) {
+        stationListEl.innerHTML = '<div class="empty-msg">No stations yet</div>';
+        return;
+      }
+
+      stationListEl.innerHTML = stations.map((s, i) => `
+        <div class="station-item ${i === activeIndex ? 'active' : ''}" data-index="${i}">
+          <span class="station-item-name">${escapeHtml(s.name)}</span>
+          <div class="station-item-actions">
+            <button class="station-delete" data-delete="${i}" aria-label="Delete ${escapeHtml(s.name)}">
+              <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+            </button>
+          </div>
+        </div>
+      `).join('');
+
+      stationListEl.querySelectorAll('.station-item').forEach(el => {
+        el.addEventListener('click', (e) => {
+          if (e.target.closest('.station-delete')) return;
+          selectStation(parseInt(el.dataset.index));
+        });
+      });
+
+      stationListEl.querySelectorAll('.station-delete').forEach(el => {
+        el.addEventListener('click', () => {
+          deleteStation(parseInt(el.dataset.delete));
+        });
+      });
+    }
+
+    function escapeHtml(str) {
+      const d = document.createElement('div');
+      d.textContent = str;
+      return d.innerHTML;
+    }
+
+    function loadStations() {
       try {
-        const stored = JSON.parse(localStorage.getItem('miniradio_channel'));
-        if (stored && stored.name && stored.url) return stored;
+        const stored = JSON.parse(localStorage.getItem('miniradio_stations'));
+        if (Array.isArray(stored)) return stored;
       } catch {}
+      // Migrate from old single-channel format
+      try {
+        const old = JSON.parse(localStorage.getItem('miniradio_channel'));
+        if (old && old.name && old.url) {
+          const migrated = [old];
+          localStorage.setItem('miniradio_stations', JSON.stringify(migrated));
+          localStorage.setItem('miniradio_active', '0');
+          localStorage.removeItem('miniradio_channel');
+          return migrated;
+        }
+      } catch {}
+      return [];
+    }
+
+    function saveStations() {
+      localStorage.setItem('miniradio_stations', JSON.stringify(stations));
+    }
+
+    function loadActiveIndex() {
+      const i = parseInt(localStorage.getItem('miniradio_active'));
+      if (!isNaN(i) && i >= 0 && i < stations.length) return i;
+      return stations.length > 0 ? 0 : -1;
+    }
+
+    function saveActiveIndex() {
+      localStorage.setItem('miniradio_active', String(activeIndex));
+    }
+
+    function getActiveStation() {
+      if (activeIndex >= 0 && activeIndex < stations.length) return stations[activeIndex];
       return null;
     }
 
-    function applyChannel() {
-      if (channel) {
-        stationNameEl.textContent = channel.name;
+    function applyActive() {
+      const station = getActiveStation();
+      if (station) {
+        stationNameEl.textContent = station.name;
         statusEl.textContent = 'Tap to play';
       } else {
         stationNameEl.textContent = 'Mini Radio';
-        statusEl.textContent = 'Set up a station';
+        statusEl.textContent = 'Add a station';
       }
     }
 
     // --- Player ---
     btn.addEventListener('click', () => {
-      if (!channel) {
+      const station = getActiveStation();
+      if (!station) {
         openPanel();
         return;
       }
@@ -374,7 +574,7 @@
       } else {
         statusEl.textContent = 'Connecting...';
         statusEl.className = 'status';
-        radio.src = channel.url;
+        radio.src = station.url;
         radio.play().catch(() => {
           statusEl.textContent = 'Stream unavailable';
         });
