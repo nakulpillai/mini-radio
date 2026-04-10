@@ -1,0 +1,14 @@
+{
+  "version": "1.0.0",
+  "name": "Mini Radio",
+  "description": "Minimalist radio player",
+  "icon": "icons/icon-512.png",
+  "updated": "2026-04-10",
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-04-10",
+      "notes": "Initial release with core features"
+    }
+  ]
+}
